@@ -1,15 +1,14 @@
 {
-    "name": "OCC Web",
-    "description": "OCC Web terminal",
-    "type": "project",
-    "license": "AGPL",
+    "name": "adphi/occweb",
+    "description": "Nextcloud OCC Web terminal",
+    "type": "nextcloud-app",
+    "license": "AGPL-3.0-or-later",
     "authors": [
         {
             "name": "Adphi"
         }
     ],
-    "require": {},
-    "require-dev": {
-        "phpunit/phpunit": "^5.4"
+    "require": {
+        "php": ">=8.2"
     }
 }

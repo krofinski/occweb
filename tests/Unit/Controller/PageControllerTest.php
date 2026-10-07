@@ -1,31 +1,20 @@
 <?php
 
-namespace OCA\TestNextcloudApp\Tests\Unit\Controller;
+namespace OCA\OCCWeb\Tests\Unit\Controller;
 
-use PHPUnit_Framework_TestCase;
+use PHPUnit\Framework\TestCase;
+use OCP\IRequest;
+use OCP\IGroupManager;
+use OCA\OCCWeb\Controller\OccController;
 
-use OCP\AppFramework\Http\TemplateResponse;
+class PageControllerTest extends TestCase {
+    public function testOccOutputErrorOutput(): void {
+        $output = new \OCA\OCCWeb\Controller\OccOutput();
+        $this->assertSame($output, $output->getErrorOutput());
+    }
 
-use OCA\TestNextcloudApp\Controller\OCCController;
-
-
-class PageControllerTest extends PHPUnit_Framework_TestCase {
-	private $controller;
-	private $userId = 'john';
-
-	public function setUp() {
-		$request = $this->getMockBuilder('OCP\IRequest')->getMock();
-
-		$this->controller = new OCCController(
-			'testnextcloudapp', $request, $this->userId
-		);
-	}
-
-	public function testIndex() {
-		$result = $this->controller->index();
-
-		$this->assertEquals('index', $result->getTemplateName());
-		$this->assertTrue($result instanceof TemplateResponse);
-	}
-
+    public function testFakeRequest(): void {
+        $request = new \OCA\OCCWeb\Controller\FakeRequest();
+        $this->assertEquals(['argv' => ['occ']], $request->server);
+    }
 }
