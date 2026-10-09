@@ -24,11 +24,13 @@ This repository is updated and modernized to provide full compatibility with **N
 
 ### Installation
 
-1. Clone or place this folder into your Nextcloud `apps/` or `custom_apps/` directory named `occweb`:
+1. Clone or place this folder into your Nextcloud `apps/` or `custom_apps/` directory (the folder name **must be in lowercase `occweb`**, not `OCCWeb`):
    ```bash
    cd /var/www/nextcloud/apps/
+   # Important: clone explicitly into 'occweb'
    git clone https://github.com/krofinski/OCCWeb.git occweb
    ```
+   > **Note:** Nextcloud strictly requires app IDs and their directory names to consist only of lowercase characters (`occweb`). If the directory is named `OCCWeb`, Nextcloud will fail to read its metadata and report it as `OCCWeb: 0` (disabled).
 2. Set appropriate web server permissions:
    ```bash
    chown -R www-data:www-data /var/www/nextcloud/apps/occweb
