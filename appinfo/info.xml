@@ -5,7 +5,7 @@
     <name>OCC Web</name>
     <summary>OCC Commands in a web terminal</summary>
     <description><![CDATA[Run Nextcloud OCC commands directly in a web terminal from the Nextcloud administration interface. Fully compatible with Nextcloud 35.]]></description>
-    <version>0.3.0</version>
+    <version>0.3.1</version>
     <licence>agpl</licence>
     <author mail="adphi.apps@gmail.com">Adphi</author>
     <namespace>OCCWeb</namespace>

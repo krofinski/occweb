@@ -12,6 +12,8 @@ This repository is updated and modernized to provide full compatibility with **N
 
 * **Nextcloud 35 & Modern DI Container:** Replaced hardcoded `OC\Console\Application` constructor parameter bindings with Nextcloud's Dependency Injection container resolution and dynamic reflection fallback, preventing constructor breakage across Nextcloud releases.
 * **Bypass Web Request argv Issue:** Direct execution via the underlying Symfony Console application avoids `ConsoleEvent` crashes caused by missing `$_SERVER['argv']` during web requests.
+* **Asynchronous Background Execution & Live Streaming:** Heavy or long-running commands (e.g. `files:scan --all`) are executed in the background and streamed in real time via polling, preventing Nginx/PHP-FPM HTTP 504 timeouts.
+* **Process Cancellation:** Supports cancelling active commands in real time by pressing `Ctrl+C` in the web terminal.
 * **Self-Contained Frontend (jQuery Bundling):** Nextcloud removed global jQuery from core templates in recent releases. OCCWeb bundles its own jQuery library to guarantee terminal functionality without runtime errors.
 * **PHP 8 Attributes & Strict Types:** Uses native `#[NoCSRFRequired]` attributes alongside backwards-compatible docblock annotations, matching modern Nextcloud App Framework conventions.
 * **Enhanced Admin Access Control:** Strictly restricts terminal execution to authenticated users with Nextcloud administrator privileges (`IGroupManager::isAdmin`).
@@ -25,7 +27,7 @@ This repository is updated and modernized to provide full compatibility with **N
 1. Clone or place this folder into your Nextcloud `apps/` or `custom_apps/` directory named `occweb`:
    ```bash
    cd /var/www/nextcloud/apps/
-   git clone https://github.com/Adphi/occweb.git occweb
+   git clone https://github.com/krofinski/OCCWeb.git occweb
    ```
 2. Set appropriate web server permissions:
    ```bash
@@ -41,9 +43,8 @@ This repository is updated and modernized to provide full compatibility with **N
 
 ### ⚠️ Warnings & Limitations
 
-- **Not an Interactive TTY:** Web requests execute synchronously over HTTP. Commands that prompt for interactive user input will run with default options or exit without waiting.
-- **PHP Execution Timeouts:** Long-running maintenance commands on huge instances (such as large `files:scan --all` runs) can exceed PHP/web server execution timeouts (`max_execution_time`). For intensive maintenance, use direct SSH access.
-- **Maintenance Mode:** Avoid enabling maintenance mode from the web interface (`occ maintenance:mode --on`), as this renders the web UI immediately inaccessible.
+- **Non-Interactive Execution:** Commands execute non-interactively (`--no-interaction`). Commands requiring interactive confirmation will proceed with their default options.
+- **Maintenance Mode:** Avoid enabling maintenance mode from the web interface (`occ maintenance:mode --on`), as this renders the web UI immediately inaccessible. Use `--force` only if you have terminal/SSH access.
 
 ---
 
