@@ -12,5 +12,7 @@ return [
 	   ['name' => 'occ#index', 'url' => '/', 'verb' => 'GET'],
 	   ['name' => 'occ#cmd', 'url' => '/cmd', 'verb' => 'POST'],
 	   ['name' => 'occ#list', 'url' => '/cmd', 'verb' => 'GET'],
+	   ['name' => 'occ#poll', 'url' => '/poll', 'verb' => 'GET'],
+	   ['name' => 'occ#cancel', 'url' => '/cancel', 'verb' => 'POST'],
     ]
 ];
