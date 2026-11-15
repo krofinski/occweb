@@ -13,7 +13,6 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use ReflectionClass;
 use ReflectionMethod;
-use ReflectionProperty;
 use Symfony\Component\Console\Application as SymfonyApplication;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -124,7 +123,6 @@ class OccControllerTest extends TestCase
             $ref = new ReflectionClass($class);
             if ($ref->hasProperty($propertyName)) {
                 $prop = $ref->getProperty($propertyName);
-                $prop->setAccessible(true);
                 $prop->setValue($object, $value);
                 return;
             }
@@ -136,7 +134,6 @@ class OccControllerTest extends TestCase
     private function callProtected(object $object, string $method, array $args = []): mixed
     {
         $ref = new ReflectionMethod($object, $method);
-        $ref->setAccessible(true);
         return $ref->invokeArgs($object, $args);
     }
 
