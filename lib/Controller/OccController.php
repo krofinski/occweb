@@ -8,6 +8,7 @@ use ReflectionProperty;
 use ReflectionNamedType;
 use OC;
 use OC\Console\Application;
+use OCP\IConfig;
 use OCP\IRequest;
 use OCP\IGroupManager;
 use OCP\IUserSession;
@@ -27,21 +28,25 @@ class OccController extends Controller
     private LoggerInterface $logger;
     private ?string $userId;
     private ?IGroupManager $groupManager;
+    private ?IConfig $config;
     private $application;
     private $symphonyApplication;
     private ?OccOutput $output = null;
+    private string|false|null $resolvedPhpBinary = false;
 
     public function __construct(
         string $AppName,
         IRequest $request,
         ?string $userId = null,
         ?IGroupManager $groupManager = null,
-        ?LoggerInterface $logger = null
+        ?LoggerInterface $logger = null,
+        ?IConfig $config = null
     ) {
         parent::__construct($AppName, $request);
         $this->userId = $userId;
         $this->logger = $logger ?? OC::$server->get(LoggerInterface::class);
         $this->groupManager = $groupManager ?? (OC::$server->has(IGroupManager::class) ? OC::$server->get(IGroupManager::class) : null);
+        $this->config = $config ?? (class_exists(OC::class, false) && isset(OC::$server) && OC::$server->has(IConfig::class) ? OC::$server->get(IConfig::class) : null);
 
         $this->initConsoleApplication();
     }
@@ -239,26 +244,171 @@ class OccController extends Controller
         return $tokens;
     }
 
-    private function getPhpBinary(): string
+    private function getConfiguredPhpBinary(): string
     {
-        $bin = PHP_BINARY;
-        if ($bin && is_executable($bin) && !str_contains($bin, 'fpm') && !str_contains($bin, 'cgi')) {
-            return $bin;
+        if ($this->config === null) {
+            return '';
         }
-        $candidates = ['php', 'php84', 'php83', 'php82', '/usr/bin/php', '/usr/local/bin/php'];
-        foreach ($candidates as $candidate) {
-            $found = trim((string)@shell_exec('which ' . escapeshellarg($candidate) . ' 2>/dev/null'));
-            if ($found && is_executable($found)) {
-                return $found;
-            }
-        }
-        return 'php';
+        $configured = $this->config->getSystemValue('occweb.php_binary', '');
+        return is_string($configured) ? trim($configured) : '';
     }
 
-    private function getOccScriptPath(): ?string
+    protected function isCliBinary(string $bin): bool
+    {
+        if ($bin === '' || !function_exists('exec') || preg_match('/[\r\n\0]/', $bin)) {
+            return false;
+        }
+        // Probe actual PHP_SAPI via shell so open_basedir does not block paths outside docroot
+        $cmd = escapeshellarg($bin)
+            . ' -d display_errors=0 -d display_startup_errors=0 -r '
+            . escapeshellarg('echo "\nOCCWEB_SAPI:" . PHP_SAPI . "\n";')
+            . ' < /dev/null 2>/dev/null';
+        $output = [];
+        $exitCode = -1;
+        @exec($cmd, $output, $exitCode);
+        if ($exitCode !== 0 || empty($output)) {
+            return false;
+        }
+        foreach ($output as $line) {
+            if (trim($line) === 'OCCWEB_SAPI:cli') {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    protected function resolveBinaryInPath(string $name): ?string
+    {
+        if ($name === '' || !function_exists('exec') || preg_match('/[\r\n\0]/', $name)) {
+            return null;
+        }
+        $output = [];
+        $exitCode = -1;
+        @exec('command -v ' . escapeshellarg($name) . ' < /dev/null 2>/dev/null', $output, $exitCode);
+        if ($exitCode !== 0 || empty($output)) {
+            return null;
+        }
+        $resolved = trim($output[0]);
+        return $resolved !== '' ? $resolved : null;
+    }
+
+    protected function detectPhpBinary(
+        string $currentBin,
+        string $currentSapi,
+        int $majorVersion,
+        int $minorVersion
+    ): ?string {
+        $checked = [];
+        $tryCandidate = function (?string $candidate) use (&$checked): ?string {
+            if ($candidate === null || $candidate === '' || isset($checked[$candidate])) {
+                return null;
+            }
+            $checked[$candidate] = true;
+            return $this->isCliBinary($candidate) ? $candidate : null;
+        };
+
+        $configured = $this->getConfiguredPhpBinary();
+        if ($configured !== '') {
+            $match = $tryCandidate($configured);
+            if ($match !== null) {
+                return $match;
+            }
+            $this->logger->warning('Configured occweb.php_binary is not a valid CLI PHP binary: ' . $configured);
+        }
+
+        $majorMinorDot = $majorVersion . '.' . $minorVersion;
+        $majorMinor = $majorVersion . $minorVersion;
+        $versionedNames = [
+            'php' . $majorMinorDot . '-cli',
+            'php' . $majorMinor . '-cli',
+            'php-cli',
+            'php' . $majorMinorDot,
+            'php' . $majorMinor,
+            'php',
+        ];
+
+        $probeDir = static function (string $dir) use ($versionedNames, $tryCandidate): ?string {
+            $prefix = ($dir === '/' ? '' : rtrim($dir, '/')) . '/';
+            foreach ($versionedNames as $name) {
+                $match = $tryCandidate($prefix . $name);
+                if ($match !== null) {
+                    return $match;
+                }
+            }
+            return null;
+        };
+
+        if ($currentBin !== '') {
+            $baseLower = strtolower(basename($currentBin));
+            $sapiLower = strtolower($currentSapi);
+            $isNonCliDaemon = $sapiLower === 'apache2handler'
+                || str_contains($sapiLower, 'cgi')
+                || str_contains($sapiLower, 'fpm')
+                || str_contains($baseLower, 'fpm')
+                || str_contains($baseLower, 'cgi')
+                || $baseLower === 'httpd'
+                || str_starts_with($baseLower, 'apache');
+
+            if ($isNonCliDaemon) {
+                $checked[$currentBin] = true;
+            } elseif (($match = $tryCandidate($currentBin)) !== null) {
+                return $match;
+            }
+
+            $binDir = dirname($currentBin);
+            $candidateDirs = [$binDir];
+            if (basename($binDir) === 'sbin') {
+                $parentDir = dirname($binDir);
+                if ($parentDir !== '' && $parentDir !== $binDir) {
+                    $candidateDirs[] = ($parentDir === '/' ? '' : $parentDir) . '/bin';
+                }
+            }
+            foreach ($candidateDirs as $dir) {
+                if (($match = $probeDir($dir)) !== null) {
+                    return $match;
+                }
+            }
+        }
+
+        $pathNames = array_values(array_unique(array_merge(
+            $versionedNames,
+            ['php8.5', 'php85', 'php8.4', 'php84', 'php8.3', 'php83', 'php8.2', 'php82']
+        )));
+        foreach ($pathNames as $name) {
+            if (($match = $tryCandidate($this->resolveBinaryInPath($name))) !== null) {
+                return $match;
+            }
+        }
+
+        foreach (['/usr/bin', '/usr/local/bin'] as $dir) {
+            if (($match = $probeDir($dir)) !== null) {
+                return $match;
+            }
+        }
+
+        return null;
+    }
+
+    private function getPhpBinary(): ?string
+    {
+        if ($this->resolvedPhpBinary !== false) {
+            return $this->resolvedPhpBinary;
+        }
+
+        $this->resolvedPhpBinary = $this->detectPhpBinary(
+            defined('PHP_BINARY') ? PHP_BINARY : '',
+            PHP_SAPI,
+            PHP_MAJOR_VERSION,
+            PHP_MINOR_VERSION
+        );
+
+        return $this->resolvedPhpBinary;
+    }
+
+    protected function getOccScriptPath(): ?string
     {
         $candidates = [
-            (defined('OC::$SERVERROOT') || isset(OC::$SERVERROOT)) ? OC::$SERVERROOT . '/occ' : '',
+            (class_exists(OC::class, false) && isset(OC::$SERVERROOT)) ? OC::$SERVERROOT . '/occ' : '',
             dirname(__DIR__, 4) . '/occ',
             '/app/www/public/occ',
             '/var/www/nextcloud/occ',
@@ -278,7 +428,10 @@ class OccController extends Controller
             return false;
         }
         $occPath = $this->getOccScriptPath();
-        return $occPath !== null && @file_exists($occPath);
+        if ($occPath === null || !@file_exists($occPath)) {
+            return false;
+        }
+        return $this->getPhpBinary() !== null;
     }
 
     private function runInProcess(StringInput $input): string
@@ -340,7 +493,7 @@ class OccController extends Controller
             $tokens = $this->tokenizeCommand($command);
             $cmdArgs = array_map('escapeshellarg', $tokens);
 
-            $phpBin = escapeshellarg($this->getPhpBinary());
+            $phpBin = escapeshellarg((string)$this->getPhpBinary());
             $occScript = escapeshellarg((string)$this->getOccScriptPath());
 
             $cliCmd = "$phpBin $occScript --no-interaction " . implode(' ', $cmdArgs);
