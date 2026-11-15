@@ -43,6 +43,16 @@ This repository is updated and modernized to provide full compatibility with **N
 
 ---
 
+### ⚙️ Optional Configuration
+
+If automatic PHP CLI detection does not select the desired binary in a custom or restricted hosting environment, you can specify it explicitly in Nextcloud's `config/config.php`:
+
+```php
+'occweb.php_binary' => '/path/to/php-cli',
+```
+
+---
+
 ### ⚠️ Warnings & Limitations
 
 - **Non-Interactive Execution:** Commands execute non-interactively (`--no-interaction`). Commands requiring interactive confirmation will proceed with their default options.
